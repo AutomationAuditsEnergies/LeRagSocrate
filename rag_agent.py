@@ -285,7 +285,7 @@ def rag_answer(
             logger.info("✅ Réponse fallback générée (sans LLM)")
 
         # Ajouter la réponse d'Alain à la BDD
-        add_to_conversation(username, "Alain", result, user_id)
+        add_to_conversation(username, "Professeur", result, user_id)
 
         # Simulation d'un temps de réponse humain (réduit pour Azure)
         if not os.getenv("AZURE_ENV") and not os.getenv("PORT"):  # Seulement en local
