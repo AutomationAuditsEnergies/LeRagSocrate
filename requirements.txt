@@ -1,6 +1,5 @@
 Flask==2.3.3
 Flask-CORS==4.0.0
-chromadb==0.4.15
 langchain==0.0.350
 langchain-openai==0.0.2
 openai>=1.6.1,<2.0.0

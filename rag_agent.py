@@ -1,11 +1,10 @@
-# rag_agent.py
+# rag_agent.py - Version Azure sans ChromaDB
 
 import os
 import time
 import random
 import sqlite3
 from datetime import datetime
-import chromadb
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 import logging
@@ -16,13 +15,12 @@ logger = logging.getLogger(__name__)
 # Configuration depuis variables d'environnement (Azure friendly)
 SECRET_KEY = os.getenv("OPENAI_API_KEY")
 DB_PATH = os.getenv("DB_PATH", "/tmp/database.db")  # Azure utilise /tmp
-CHROMA_PATH = os.getenv("CHROMA_PATH", "/tmp/chroma_simple")  # Azure utilise /tmp
 
-logger.info(f"🔧 RAG Agent configuré - DB: {DB_PATH}, ChromaDB: {CHROMA_PATH}")
+logger.info(f"🔧 RAG Agent configuré - DB: {DB_PATH}")
 
-# Prompt pour guider l'agent avec mémoire
+# Prompt simplifié pour guider l'agent avec mémoire
 prompt_template = PromptTemplate(
-    input_variables=["context", "conversation_history", "question"],
+    input_variables=["conversation_history", "question"],
     template="""
     Tu es un formateur expérimenté et passionné qui accompagne des conseillers relation client à distance. 
     Tu as 15 ans d'expérience dans le domaine et tu adores transmettre ton savoir.
@@ -37,55 +35,20 @@ prompt_template = PromptTemplate(
     - Sois naturel et spontané, pas robotique
     - N'utilise JAMAIS d'émojis dans tes réponses
     - Termine parfois par une question pour relancer la conversation
+    - Base-toi sur tes connaissances en formation relation client à distance
 
     Historique de la conversation récente :
     {conversation_history}
 
-    Contenu du cours disponible :
-    {context}
-
     Question actuelle de l'apprenant :
     {question}
 
-    Réponse d'Alain :
+    Réponse d'Alain (formateur expérimenté en relation client) :
     """,
 )
 
-# Variables globales pour ChromaDB et LLM (initialisées à la demande)
-client = None
-collection = None
+# Variable globale pour le LLM
 llm = None
-
-
-def initialize_chromadb():
-    """Initialise ChromaDB de manière lazy"""
-    global client, collection
-
-    if client is not None:
-        return  # Déjà initialisé
-
-    try:
-        logger.info(f"🔗 Connexion à ChromaDB: {CHROMA_PATH}")
-
-        # Créer le dossier si nécessaire
-        os.makedirs(CHROMA_PATH, exist_ok=True)
-
-        client = chromadb.PersistentClient(path=CHROMA_PATH)
-
-        try:
-            collection = client.get_collection(name="documents")
-            doc_count = collection.count()
-            logger.info(f"✅ Collection 'documents' trouvée: {doc_count} documents")
-        except Exception:
-            logger.warning("⚠️ Collection 'documents' non trouvée, création...")
-            collection = client.create_collection(name="documents")
-            logger.info("✅ Collection 'documents' créée")
-
-    except Exception as e:
-        logger.error(f"❌ Erreur connexion ChromaDB: {e}")
-        # En cas d'erreur, on continue sans ChromaDB
-        client = None
-        collection = None
 
 
 def initialize_llm():
@@ -280,13 +243,12 @@ def cleanup_old_conversations(days_old: int = 30):
 def rag_answer(
     question: str, username: str = "utilisateur", user_id: int = None
 ) -> str:
-    """Fonction principale RAG - Compatible avec votre utilisation existante"""
+    """Fonction principale RAG - Version simplifiée sans ChromaDB"""
     try:
-        # Initialisation lazy des composants
-        initialize_chromadb()
+        # Initialisation du LLM seulement
         initialize_llm()
 
-        logger.info(f"🔍 Recherche pour {username}: {question[:50]}...")
+        logger.info(f"🔍 Traitement question de {username}: {question[:50]}...")
 
         # Récupérer l'historique de conversation depuis la BDD
         conversation_history = get_conversation_history(username)
@@ -294,35 +256,11 @@ def rag_answer(
         # Ajouter la question de l'utilisateur à la BDD
         add_to_conversation(username, "Utilisateur", question, user_id)
 
-        # Recherche dans ChromaDB
-        context = ""
-        if collection is not None:
-            try:
-                results = collection.query(
-                    query_texts=[question],
-                    n_results=8,
-                    include=["documents", "distances"],
-                )
-
-                # Extraire le contexte
-                if results["documents"] and results["documents"][0]:
-                    context = "\n\n".join(results["documents"][0])
-                    logger.debug(f"📚 Contexte trouvé: {len(context)} caractères")
-                else:
-                    context = "Aucun contenu spécifique trouvé dans le cours."
-
-            except Exception as e:
-                logger.error(f"❌ Erreur recherche ChromaDB: {e}")
-                context = "Erreur lors de la recherche dans les documents."
-        else:
-            context = "Base de données vectorielle non disponible."
-
-        # Générer la réponse
+        # Générer la réponse avec OpenAI GPT-4
         if llm and SECRET_KEY:
-            # Utiliser OpenAI GPT-4
             try:
+                # Utiliser le prompt simplifié sans contexte vectoriel
                 formatted_prompt = prompt_template.format(
-                    context=context,
                     conversation_history=conversation_history,
                     question=question,
                 )
@@ -339,17 +277,10 @@ def rag_answer(
 
             except Exception as e:
                 logger.error(f"❌ Erreur GPT-4: {e}")
-                result = f"Désolé, j'ai un problème technique. Voici ce que j'ai trouvé dans le cours :\n\n{context[:500] if context else 'Aucune information disponible.'}..."
+                result = "Désolé, j'ai un problème technique avec mon système de réponse. Peux-tu reformuler ta question ?"
         else:
-            # Réponse simple sans LLM (fallback)
-            if (
-                context
-                and "Aucun contenu spécifique" not in context
-                and "Erreur" not in context
-            ):
-                result = f"D'après le contenu du cours, voici les informations pertinentes :\n\n{context[:600]}..."
-            else:
-                result = "Désolé, je n'ai pas trouvé d'informations pertinentes dans le cours pour répondre à ta question. Assure-toi que la base de données est bien configurée."
+            # Réponse de fallback sans LLM
+            result = "Bonjour ! Je suis Alain, ton formateur en relation client. Pour l'instant, mon système n'est pas complètement configuré, mais n'hésite pas à me poser tes questions sur la relation client à distance. Je ferai de mon mieux pour t'aider !"
 
             logger.info("✅ Réponse fallback générée (sans LLM)")
 
@@ -382,7 +313,7 @@ except Exception as e:
 
 # Test rapide (seulement si exécuté directement)
 if __name__ == "__main__":
-    logger.info("🧪 Test du RAG ChromaDB avec BDD...")
+    logger.info("🧪 Test du RAG sans ChromaDB...")
 
     username = "TestUser"
 

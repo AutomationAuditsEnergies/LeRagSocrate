@@ -1,3 +1,5 @@
+# nlp_service
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
@@ -45,9 +47,9 @@ def health_check():
         return jsonify(
             {
                 "status": "healthy",
-                "service": "RAG Service",
+                "service": "RAG Service (No ChromaDB)",
                 "timestamp": datetime.now().isoformat(),
-                "version": "1.0",
+                "version": "2.0",
             }
         )
     except Exception as e:
@@ -128,28 +130,29 @@ def ask():
 
 @app.route("/status", methods=["GET"])
 def get_status():
-    """Status détaillé du service"""
+    """Status détaillé du service - Version sans ChromaDB"""
     try:
-        # Vérifier si ChromaDB fonctionne
-        chromadb_status = "unknown"
+        # Vérifier la base de données SQLite
+        db_status = "unknown"
         try:
-            import chromadb
+            import sqlite3
 
-            client = chromadb.PersistentClient(
-                path=os.getenv("CHROMA_PATH", "./chroma_simple")
-            )
-            collection = client.get_collection(name="documents")
-            doc_count = collection.count()
-            chromadb_status = f"✅ {doc_count} documents"
+            conn = sqlite3.connect(os.getenv("DB_PATH", "/tmp/database.db"))
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM conversations")
+            conv_count = cursor.fetchone()[0]
+            conn.close()
+            db_status = f"✅ {conv_count} conversations"
         except Exception as e:
-            chromadb_status = f"❌ {str(e)}"
+            db_status = f"❌ {str(e)}"
 
         return jsonify(
             {
-                "service": "RAG Microservice",
+                "service": "RAG Microservice (No ChromaDB)",
                 "status": "running",
-                "chromadb_status": chromadb_status,
+                "database_status": db_status,
                 "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
+                "chromadb_status": "❌ Disabled (Azure compatibility)",
                 "timestamp": datetime.now().isoformat(),
             }
         )
